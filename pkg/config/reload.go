@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/containers/image/v5/pkg/sysregistriesv2"
 	"github.com/cri-o/cri-o/internal/log"
@@ -17,10 +18,119 @@ import (
 func (c *Config) Reload() error {
 	logrus.Infof("Reloading configuration")
 
-	// Reload the config
-	newConfig, err := DefaultConfig()
-	if err != nil {
-		return fmt.Errorf("unable to create default config")
+	newConfig := &Config{}
+
+	// Check command line args
+	if len(os.Args) > 1 {
+		// replace args in newConfig with cmdArgs
+		// iterate through the args and set the newConfig values
+		for i := 1; i < len(os.Args); i+=2 {
+			arg := os.Args[i]
+			argValue := os.Args[i+1]
+			// Add your code here to parse and validate the argument
+			// For example, you can check if the argument is a valid flag or option
+			// and handle it accordingly
+			switch arg {
+				case "--log-level":
+					newConfig.LogLevel = argValue
+				case "--log-filter":
+					newConfig.LogFilter = argValue
+				case "--pause-image":
+					newConfig.PauseImage = argValue
+				case "--pause-image-auth-file":
+					newConfig.PauseImageAuthFile = argValue
+				case "--pause-command":
+					newConfig.PauseCommand = argValue
+				case "--pinned-images":
+					newConfig.PinnedImages = append(newConfig.PinnedImages, argValue)
+				case "--registries":
+					newConfig.Registries = append(newConfig.Registries, argValue)
+				case "--seccomp-profile":
+					newConfig.SeccompProfile = argValue
+				case "--apparmor-profile":
+					newConfig.ApparmorProfile = argValue
+				case "--blockio-config-file":
+					newConfig.BlockIOConfigFile = argValue
+				case "--blockio-reload":
+					newConfig.BlockIOReload, _ = strconv.ParseBool(argValue)
+				case "--rdt-config-file":
+					newConfig.RdtConfigFile = argValue
+				case "--runtimes":
+					runtime := Runtimes{argValue}
+					newConfig.Runtimes = append(newConfig.Runtimes, runtime)
+				case "--default-runtime":
+					newConfig.DefaultRuntime = argValue
+			}
+		}
+	} else if len(os.Environ()) > 0 {
+		// replace values in newConfig with environment variables
+		// iterate through the variables and set the newConfig values
+
+		for _, env := range os.Environ() {
+			envPair := strings.SplitN(env, "=", 2)
+			if len(envPair) == 2 {
+				envName := envPair[0]
+				envValue := envPair[1]
+				switch envName {
+				case "LOG_LEVEL":
+					newConfig.LogLevel = envValue
+				case "LOG_FILTER":
+					newConfig.LogFilter = envValue
+				case "PAUSE_IMAGE":
+					newConfig.PauseImage = envValue
+				case "PAUSE_IMAGE_AUTH_FILE":
+					newConfig.PauseImageAuthFile = envValue
+				case "PAUSE_COMMAND":
+					newConfig.PauseCommand = envValue
+				case "PINNED_IMAGES":
+					newConfig.PinnedImages = append(newConfig.PinnedImages, envValue)
+				case "REGISTRIES":
+					newConfig.Registries = append(newConfig.Registries, envValue)
+				case "SECCOMP_PROFILE":
+					newConfig.SeccompProfile = envValue
+				case "APPARMOR_PROFILE":
+					newConfig.ApparmorProfile = envValue
+				case "BLOCKIO_CONFIG_FILE":
+					newConfig.BlockIOConfigFile = envValue
+				case "BLOCKIO_RELOAD":
+					newConfig.BlockIOReload, _ = strconv.ParseBool(envValue)
+				case "RDT_CONFIG_FILE":
+					newConfig.RdtConfigFile = envValue
+				case "RUNTIMES":
+					newConfig.Runtimes = append(newConfig.Runtimes, envValue)
+				case "DEFAULT_RUNTIME":
+					newConfig.DefaultRuntime = envValue
+				}
+			}
+		}
+	} else if (len(os.Args) > 1) || len(os.Environ()) > 0 {
+		for i := 1; i < len(os.Args); i+=2 {
+			arg := os.Args[i]
+			switch arg {
+			case "--config":
+				configPath := os.Args[i+1]
+				if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+					logrus.Info("Updating config from given file %s", configPath)
+					if err := newConfig.UpdateFromFile(configPath); err != nil {
+						return err
+					}
+				}
+			case "--config-dir":
+				configDir := os.Args[i+1]
+				if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+					logrus.Info("Updating config from given path %s", configDir)
+					if err := newConfig.UpdateFromPath(configDir); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	} else {
+		// set default values in newConfig
+		newConfig, err := DefaultConfig()
+		if err != nil {
+			return fmt.Errorf("unable to create default config")
+		}
 	}
 
 	if _, err := os.Stat(c.singleConfigPath); !os.IsNotExist(err) {
